@@ -1,0 +1,233 @@
+:root {
+  color-scheme: light;
+  --bg-page: #f7f2ea;
+  --bg-card: rgba(255, 252, 247, 0.92);
+  --bg-card-strong: #fffaf3;
+  --bg-accent: #eaf1fb;
+  --border-soft: rgba(142, 116, 89, 0.16);
+  --text-primary: #2f261c;
+  --text-secondary: #6b5a49;
+  --text-muted: #907f6e;
+  --accent-primary: #2f6fb0;
+  --accent-secondary: #c96a3a;
+  --accent-success: #2f8b57;
+  --accent-warning: #b7791f;
+  --shadow-soft: 0 20px 50px rgba(87, 65, 39, 0.08);
+  --shadow-card: 0 14px 40px rgba(78, 53, 21, 0.08);
+  --radius-xl: 28px;
+  --radius-lg: 20px;
+  --radius-md: 14px;
+  --header-height: 84px;
+  font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
+  color: var(--text-primary);
+  background: var(--bg-page);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  margin: 0;
+  min-height: 100%;
+}
+
+body {
+  background:
+    radial-gradient(circle at top left, rgba(47, 111, 176, 0.10), transparent 28%),
+    radial-gradient(circle at right 20%, rgba(201, 106, 58, 0.12), transparent 18%),
+    linear-gradient(180deg, #fbf7f1 0%, #f6efe3 100%);
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.app-shell {
+  min-height: 100vh;
+  position: relative;
+}
+
+.ambient {
+  position: fixed;
+  pointer-events: none;
+  filter: blur(12px);
+  opacity: 0.55;
+}
+
+.ambient-left {
+  top: 72px;
+  left: 40px;
+  width: 180px;
+  height: 180px;
+  border-radius: 999px;
+  background: rgba(47, 111, 176, 0.12);
+}
+
+.ambient-right {
+  right: 40px;
+  bottom: 80px;
+  width: 220px;
+  height: 220px;
+  border-radius: 28px;
+  background: rgba(201, 106, 58, 0.12);
+}
+
+.page {
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: 32px 24px 40px;
+}
+
+.hero-card,
+.surface-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-card);
+  backdrop-filter: blur(18px);
+}
+
+.page-title {
+  margin: 0;
+  font-family: "Source Han Serif SC", "Songti SC", serif;
+  font-size: clamp(28px, 4vw, 44px);
+  line-height: 1.1;
+  letter-spacing: 0.02em;
+}
+
+.page-subtitle {
+  margin: 10px 0 0;
+  color: var(--text-secondary);
+  line-height: 1.7;
+}
+
+.auth-page {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+
+.auth-card {
+  width: min(100%, 1080px);
+  display: grid;
+  grid-template-columns: 1.1fr 0.9fr;
+  overflow: hidden;
+}
+
+.auth-intro {
+  padding: 48px;
+  background:
+    linear-gradient(145deg, rgba(47, 111, 176, 0.92), rgba(26, 68, 111, 0.92)),
+    linear-gradient(180deg, #174269, #1e5d92);
+  color: white;
+}
+
+.auth-form {
+  padding: 40px;
+  background: rgba(255, 250, 243, 0.96);
+}
+
+.app-header {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  border-bottom: 1px solid rgba(142, 116, 89, 0.14);
+  background: rgba(251, 247, 241, 0.82);
+  backdrop-filter: blur(22px);
+}
+
+.app-header__inner {
+  max-width: 1240px;
+  margin: 0 auto;
+  min-height: var(--header-height);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 0 24px;
+}
+
+.brand-mark {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  font-family: "Source Han Serif SC", "Songti SC", serif;
+  font-size: 22px;
+}
+
+.brand-badge {
+  width: 38px;
+  height: 38px;
+  border-radius: 14px;
+  display: inline-grid;
+  place-items: center;
+  color: white;
+  background: linear-gradient(135deg, var(--accent-primary), #4e95db);
+  box-shadow: 0 10px 24px rgba(47, 111, 176, 0.24);
+}
+
+.app-nav {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.app-nav a {
+  padding: 10px 14px;
+  border-radius: 999px;
+  color: var(--text-secondary);
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+.app-nav a.router-link-active {
+  background: rgba(47, 111, 176, 0.12);
+  color: var(--accent-primary);
+}
+
+.split-grid {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr;
+  gap: 24px;
+}
+
+.metric-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.metric-card {
+  padding: 20px;
+}
+
+.muted {
+  color: var(--text-muted);
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: rgba(47, 111, 176, 0.10);
+  color: var(--accent-primary);
+  font-size: 13px;
+}
+
+@media (max-width: 960px) {
+  .auth-card,
+  .split-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .metric-row {
+    grid-template-columns: 1fr;
+  }
+}

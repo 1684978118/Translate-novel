@@ -1,0 +1,7 @@
+.idea/
+.claude/
+
+backend/data/
+backend/uploads/
+
+*.log
