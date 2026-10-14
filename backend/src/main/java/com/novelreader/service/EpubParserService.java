@@ -176,7 +176,7 @@ public class EpubParserService {
 
             List<String> paragraphs = collectParagraphs(body);
             if (paragraphs.isEmpty()) {
-                String wholeText = normalizeText(body.text());
+                String wholeText = plainText(body);
                 if (hasText(wholeText)) {
                     paragraphs.add(wholeText);
                 }
@@ -194,7 +194,7 @@ public class EpubParserService {
         List<Element> preferredParagraphs = body.select("p");
         if (!preferredParagraphs.isEmpty()) {
             for (Element paragraph : preferredParagraphs) {
-                addParagraph(paragraphs, paragraph.text());
+                addParagraph(paragraphs, plainText(paragraph));
             }
             return paragraphs;
         }
@@ -227,7 +227,7 @@ public class EpubParserService {
         }
 
         if (isFallbackBlock(tag) && !hasFallbackBlockChildren(element)) {
-            addParagraph(paragraphs, element.text());
+            addParagraph(paragraphs, plainText(element));
             return;
         }
 
@@ -323,7 +323,20 @@ public class EpubParserService {
     }
 
     private String textOf(Element element) {
-        return element == null ? "" : normalizeText(element.text());
+        return plainText(element);
+    }
+
+    /**
+     * 提取可见正文；EPUB 中的 ruby 注音（rt/rp）不属于正文，需要剔除，
+     * 否则会把读音拼进原文（如「静<rt>せい</rt>」变成「静せい」）。
+     */
+    private String plainText(Element element) {
+        if (element == null) {
+            return "";
+        }
+        Element clone = element.clone();
+        clone.select("rt, rp").remove();
+        return normalizeText(clone.text());
     }
 
     private String firstNonBlank(String... values) {

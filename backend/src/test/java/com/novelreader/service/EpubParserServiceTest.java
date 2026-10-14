@@ -29,6 +29,56 @@ class EpubParserServiceTest {
                 .containsExactly("二つ目の章です。", "別の段落もあります。");
     }
 
+    @Test
+    void parseStripsRubyReadingsFromParagraphText() throws Exception {
+        EpubParserService.EpubBookContent book = epubParserService.parse("ruby.epub", createRubyEpub());
+
+        assertThat(book.getChapters()).hasSize(1);
+        assertThat(book.getChapters().get(0).getParagraphs())
+                .containsExactly("静謐な空気で法要の後に、大人達は畳の部屋で会食を始める。");
+    }
+
+    private byte[] createRubyEpub() throws IOException {
+        ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+        ZipOutputStream zipOutputStream = new ZipOutputStream(outputStream);
+
+        addEntry(zipOutputStream, "mimetype", "application/epub+zip");
+        addEntry(zipOutputStream, "META-INF/container.xml",
+                "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+                        + "<container version=\"1.0\" xmlns=\"urn:oasis:names:tc:opendocument:xmlns:container\">"
+                        + "<rootfiles>"
+                        + "<rootfile full-path=\"OEBPS/content.opf\" media-type=\"application/oebps-package+xml\"/>"
+                        + "</rootfiles>"
+                        + "</container>");
+        addEntry(zipOutputStream, "OEBPS/content.opf",
+                "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+                        + "<package version=\"2.0\" xmlns=\"http://www.idpf.org/2007/opf\" unique-identifier=\"bookid\">"
+                        + "<metadata xmlns:dc=\"http://purl.org/dc/elements/1.1/\">"
+                        + "<dc:title>Ruby EPUB</dc:title>"
+                        + "</metadata>"
+                        + "<manifest>"
+                        + "<item id=\"chapter1\" href=\"text/chapter1.xhtml\" media-type=\"application/xhtml+xml\"/>"
+                        + "</manifest>"
+                        + "<spine>"
+                        + "<itemref idref=\"chapter1\"/>"
+                        + "</spine>"
+                        + "</package>");
+        addEntry(zipOutputStream, "OEBPS/text/chapter1.xhtml",
+                "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+                        + "<html xmlns=\"http://www.w3.org/1999/xhtml\">"
+                        + "<head><title>ルビ章</title></head>"
+                        + "<body>"
+                        + "<h1>ルビ章</h1>"
+                        + "<p><ruby>静<rt>せい</rt>謐<rt>ひつ</rt></ruby>な空気で法要の後に、"
+                        + "<ruby>大人達<rt>おとなたち</rt></ruby>は<ruby>畳<rt>たたみ</rt></ruby>の部屋で"
+                        + "<ruby>会食<rt>かいしょく</rt></ruby>を始める。</p>"
+                        + "</body>"
+                        + "</html>");
+
+        zipOutputStream.close();
+        return outputStream.toByteArray();
+    }
+
     private byte[] createSampleEpub() throws IOException {
         ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
         ZipOutputStream zipOutputStream = new ZipOutputStream(outputStream);

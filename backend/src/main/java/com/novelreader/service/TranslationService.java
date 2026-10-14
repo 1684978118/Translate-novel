@@ -9,7 +9,6 @@ import java.net.ProxySelector;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
 import java.util.regex.Matcher;
@@ -49,7 +48,7 @@ public class TranslationService {
                     + "Preserve tone, line breaks, names, and implied context. Output translation only without notes.";
     private static final Pattern REGISTRY_VALUE_PATTERN = Pattern.compile("^\\s*([^\\s]+)\\s+REG_\\w+\\s+(.*)$");
     private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(6);
-    private static final Duration READ_TIMEOUT = Duration.ofSeconds(10);
+    private static final Duration READ_TIMEOUT = Duration.ofSeconds(30);
 
     @Value("${translation.provider:auto}")
     private String provider;
@@ -97,7 +96,7 @@ public class TranslationService {
         String resolvedProvider = resolveProvider();
         if (OPENAI_PROVIDER.equals(resolvedProvider)) {
             try {
-                return requestOpenAiTranslation(text);
+                return requestOpenAiTranslation(SYSTEM_PROMPT, text);
             } catch (BusinessException exception) {
                 throw exception;
             } catch (Exception exception) {
@@ -132,6 +131,23 @@ public class TranslationService {
             return hasOpenAiApiKey() ? OPENAI_PROVIDER : GOOGLE_WEB_PROVIDER;
         }
         return PLACEHOLDER_PROVIDER;
+    }
+
+    /**
+     * 是否配置了 OpenAI 兼容的大模型（用于点词释义等对话式能力）。
+     */
+    public boolean isLlmConfigured() {
+        return hasOpenAiApiKey();
+    }
+
+    /**
+     * 调用 OpenAI 兼容接口进行单轮对话；未配置时抛出异常，由调用方决定降级策略。
+     */
+    public String chat(String systemPrompt, String userPrompt) {
+        if (!isLlmConfigured()) {
+            throw new BusinessException("LLM provider is not configured");
+        }
+        return requestOpenAiTranslation(systemPrompt, userPrompt);
     }
 
     private boolean hasOpenAiApiKey() {
@@ -360,14 +376,15 @@ public class TranslationService {
         return address.getHostString() + ":" + address.getPort();
     }
 
-    private String requestOpenAiTranslation(String text) {
+    private String requestOpenAiTranslation(String systemPrompt, String userPrompt) {
         HttpHeaders headers = new HttpHeaders();
         headers.setBearerAuth(openAiApiKey);
         headers.setContentType(MediaType.APPLICATION_JSON);
 
-        HttpEntity<JsonNode> requestEntity = new HttpEntity<JsonNode>(buildOpenAiRequest(text), headers);
+        HttpEntity<JsonNode> requestEntity = new HttpEntity<JsonNode>(
+                buildChatCompletionRequest(systemPrompt, userPrompt), headers);
         ResponseEntity<JsonNode> response = restTemplate.exchange(
-                openAiBaseUrl + "/responses",
+                openAiBaseUrl + "/chat/completions",
                 HttpMethod.POST,
                 requestEntity,
                 JsonNode.class);
@@ -377,69 +394,22 @@ public class TranslationService {
             throw new BusinessException("Translation provider returned an empty response");
         }
 
-        String outputText = body.path("output_text").asText("").trim();
-        if (!outputText.isEmpty()) {
-            return outputText;
+        String outputText = body.path("choices").path(0).path("message").path("content").asText("").trim();
+        if (outputText.isEmpty()) {
+            throw new BusinessException("Translation provider returned no translation text");
         }
-
-        outputText = extractOpenAiOutputText(body.path("output"));
-        if (!outputText.isEmpty()) {
-            return outputText;
-        }
-
-        throw new BusinessException("Translation provider returned no translation text");
+        return outputText;
     }
 
-    private JsonNode buildOpenAiRequest(String text) {
+    private JsonNode buildChatCompletionRequest(String systemPrompt, String userPrompt) {
         ObjectNode root = objectMapper.createObjectNode();
         root.put("model", openAiModel);
-        root.put("max_output_tokens", openAiMaxOutputTokens);
+        root.put("max_tokens", openAiMaxOutputTokens);
 
-        ArrayNode input = root.putArray("input");
-        input.add(createOpenAiMessage("system", SYSTEM_PROMPT));
-        input.add(createOpenAiMessage("user", text));
+        ArrayNode messages = root.putArray("messages");
+        messages.addObject().put("role", "system").put("content", systemPrompt);
+        messages.addObject().put("role", "user").put("content", userPrompt);
         return root;
-    }
-
-    private ObjectNode createOpenAiMessage(String role, String text) {
-        ObjectNode message = objectMapper.createObjectNode();
-        message.put("role", role);
-
-        ArrayNode content = message.putArray("content");
-        ObjectNode textNode = content.addObject();
-        textNode.put("type", "input_text");
-        textNode.put("text", text);
-        return message;
-    }
-
-    private String extractOpenAiOutputText(JsonNode output) {
-        if (output == null || !output.isArray()) {
-            return "";
-        }
-
-        StringBuilder builder = new StringBuilder();
-        Iterator<JsonNode> iterator = output.elements();
-        while (iterator.hasNext()) {
-            JsonNode item = iterator.next();
-            JsonNode content = item.path("content");
-            if (!content.isArray()) {
-                continue;
-            }
-
-            for (JsonNode contentItem : content) {
-                if ("output_text".equals(contentItem.path("type").asText())) {
-                    String piece = contentItem.path("text").asText("").trim();
-                    if (!piece.isEmpty()) {
-                        if (builder.length() > 0) {
-                            builder.append('\n');
-                        }
-                        builder.append(piece);
-                    }
-                }
-            }
-        }
-
-        return builder.toString().trim();
     }
 
     private String requestGoogleWebTranslation(String text, String baseUrl, Proxy proxy) {

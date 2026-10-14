@@ -1,6 +1,10 @@
 package com.novelreader.service;
 
 import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.charset.CharacterCodingException;
+import java.nio.charset.Charset;
+import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -85,7 +89,7 @@ public class BookService {
         if (lowerName.endsWith(".epub")) {
             parsedBook = toParsedBook(epubParserService.parse(originalFilename, fileBytes));
         } else if (lowerName.endsWith(".txt")) {
-            parsedBook = parseTxt(new String(fileBytes, StandardCharsets.UTF_8), originalFilename);
+            parsedBook = parseTxt(decodeTxt(fileBytes), originalFilename);
         } else {
             throw new BusinessException("Only TXT and EPUB upload are supported");
         }
@@ -338,6 +342,29 @@ public class BookService {
             return file.getBytes();
         } catch (IOException exception) {
             throw new BusinessException("Failed to read uploaded file");
+        }
+    }
+
+    /**
+     * TXT 编码探测：先按 UTF-8 严格解码（含 BOM 处理），失败则回退 Shift-JIS。
+     * 青空文库等日文小说 TXT 普遍使用 Shift-JIS，按 UTF-8 硬解会产生乱码。
+     */
+    private String decodeTxt(byte[] bytes) {
+        if (bytes == null || bytes.length == 0) {
+            return "";
+        }
+        int offset = 0;
+        if (bytes.length >= 3 && (bytes[0] & 0xFF) == 0xEF && (bytes[1] & 0xFF) == 0xBB && (bytes[2] & 0xFF) == 0xBF) {
+            offset = 3;
+        }
+        try {
+            return StandardCharsets.UTF_8.newDecoder()
+                    .onMalformedInput(CodingErrorAction.REPORT)
+                    .onUnmappableCharacter(CodingErrorAction.REPORT)
+                    .decode(ByteBuffer.wrap(bytes, offset, bytes.length - offset))
+                    .toString();
+        } catch (CharacterCodingException exception) {
+            return new String(bytes, offset, bytes.length - offset, Charset.forName("Shift_JIS"));
         }
     }
 

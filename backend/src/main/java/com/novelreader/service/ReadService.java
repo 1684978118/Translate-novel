@@ -21,13 +21,22 @@ import com.novelreader.exception.BusinessException;
 import com.novelreader.mapper.ParagraphMapper;
 import com.novelreader.service.JapaneseSegmentService.TokenData;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class ReadService {
 
+    private static final Logger LOGGER = LoggerFactory.getLogger(ReadService.class);
+
     private static final String WORD_MEANING_FALLBACK = "暂未获取到可靠释义，可先加入生词本后补充。";
+    private static final String WORD_MEANING_SYSTEM_PROMPT =
+            "你是面向中文读者的日语词典助手。结合上下文解释指定的日语单词，输出词典式释义。"
+                    + "格式：以「词性。」开头，之后给出最贴合上下文的简洁中文释义（50字以内），"
+                    + "如有其他常用含义用「；」补充。只输出释义本身，不要多余说明。"
+                    + "示例：名词。少年，男孩子。";
     private static final Map<String, String> CONTEXT_MEANING_OVERRIDES = buildContextMeaningOverrides();
 
     private final ParagraphMapper paragraphMapper;
@@ -110,7 +119,10 @@ public class ReadService {
         ContextWordMatch contextWordMatch = resolveContextWordMatch(request, fallbackToken);
         TokenData resolvedToken = contextWordMatch.getToken();
 
-        String meaning = resolveMeaning(resolvedToken, contextWordMatch);
+        String meaning = llmMeaning(request, resolvedToken);
+        if (meaning.isEmpty()) {
+            meaning = resolveMeaning(resolvedToken, contextWordMatch);
+        }
         if (isUnavailableMeaning(meaning)) {
             meaning = WORD_MEANING_FALLBACK;
         }
@@ -121,6 +133,43 @@ public class ReadService {
                 .partOfSpeech(resolvedToken.getPartOfSpeech())
                 .meaning(meaning)
                 .build();
+    }
+
+    /**
+     * 优先用大模型生成词典式中文释义；未配置或调用失败时返回空串，由调用方走启发式兜底。
+     */
+    private String llmMeaning(WordDefinitionRequest request, TokenData token) {
+        if (!translationService.isLlmConfigured()) {
+            return "";
+        }
+
+        String word = token.getSurface() == null ? "" : token.getSurface().trim();
+        if (word.isEmpty()) {
+            return "";
+        }
+
+        String reading = token.getKana() == null ? "" : token.getKana().trim();
+        String partOfSpeech = token.getPartOfSpeech() == null ? "" : token.getPartOfSpeech().trim();
+        String contextText = request.getContextText() == null ? "" : request.getContextText().trim();
+
+        StringBuilder prompt = new StringBuilder("单词：").append(word);
+        if (!reading.isEmpty()) {
+            prompt.append("（读音：").append(reading).append("）");
+        }
+        if (!partOfSpeech.isEmpty()) {
+            prompt.append("\n词性：").append(partOfSpeech);
+        }
+        if (!contextText.isEmpty()) {
+            prompt.append("\n上下文：").append(contextText);
+        }
+
+        try {
+            String meaning = translationService.chat(WORD_MEANING_SYSTEM_PROMPT, prompt.toString());
+            return meaning == null ? "" : meaning.trim();
+        } catch (Exception exception) {
+            LOGGER.warn("LLM word definition failed, falling back to heuristic meaning", exception);
+            return "";
+        }
     }
 
     private WordDefinitionRequest normalizeWordDefinitionRequest(WordDefinitionRequest request) {

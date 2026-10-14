@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -104,6 +105,28 @@ class BookServiceIntegrationTest {
         Long firstChapterId = detail.getChapters().get(0).getId();
         assertThat(paragraphMapper.selectCount(Wrappers.<Paragraph>lambdaQuery().eq(Paragraph::getChapterId, firstChapterId)))
                 .isEqualTo(1);
+    }
+
+    @Test
+    void uploadTxtFallsBackToShiftJisWhenNotUtf8() throws Exception {
+        Long userId = createUser();
+        String txt = "第1章 テスト\nこんにちは、世界。";
+
+        MockMultipartFile file = new MockMultipartFile(
+                "file",
+                "aozora.txt",
+                "text/plain",
+                txt.getBytes(Charset.forName("Shift_JIS")));
+
+        BookDetailResponse detail = bookService.upload(file, userId);
+
+        assertThat(detail.getChapters()).hasSize(1);
+        assertThat(detail.getChapters().get(0).getTitle()).isEqualTo("第1章 テスト");
+        Long chapterId = detail.getChapters().get(0).getId();
+        Paragraph paragraph = paragraphMapper.selectOne(Wrappers.<Paragraph>lambdaQuery()
+                .eq(Paragraph::getChapterId, chapterId)
+                .last("limit 1"));
+        assertThat(paragraph.getOriginalText()).isEqualTo("こんにちは、世界。");
     }
 
     @Test

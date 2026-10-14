@@ -45,10 +45,12 @@ class TranslationServiceTest {
     void translateUsesOpenAiResponseWhenApiKeyConfigured() {
         ReflectionTestUtils.setField(translationService, "provider", "openai");
         ReflectionTestUtils.setField(translationService, "openAiApiKey", "test-key");
-        server.expect(requestTo("https://api.openai.com/v1/responses"))
+        server.expect(requestTo("https://api.openai.com/v1/chat/completions"))
                 .andExpect(method(HttpMethod.POST))
                 .andExpect(header("Authorization", "Bearer test-key"))
-                .andRespond(withSuccess("{\"output_text\":\"这是翻译结果。\"}", MediaType.APPLICATION_JSON));
+                .andRespond(withSuccess(
+                        "{\"choices\":[{\"message\":{\"content\":\"这是翻译结果。\"}}]}",
+                        MediaType.APPLICATION_JSON));
 
         assertThat(translationService.translate("これはテストです。")).isEqualTo("这是翻译结果。");
         assertThat(translationService.getProvider()).isEqualTo("openai");
