@@ -10,6 +10,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.LocalDateTime;
+import java.util.Base64;
+import java.util.List;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
@@ -150,6 +152,34 @@ class BookServiceIntegrationTest {
     }
 
     @Test
+    void uploadEpubStoresIllustrationBlocksAndAssets() throws Exception {
+        Long userId = createUser();
+        MockMultipartFile file = new MockMultipartFile(
+                "file",
+                "illustrated.epub",
+                "application/epub+zip",
+                createIllustratedEpub());
+
+        BookDetailResponse detail = bookService.upload(file, userId);
+        Long chapterId = detail.getChapters().get(0).getId();
+
+        List<Paragraph> blocks = paragraphMapper.selectList(Wrappers.<Paragraph>lambdaQuery()
+                .eq(Paragraph::getChapterId, chapterId)
+                .orderByAsc(Paragraph::getParagraphOrder));
+
+        assertThat(blocks).hasSize(3);
+        assertThat(blocks.get(0).getBlockType()).isEqualTo("TEXT");
+        assertThat(blocks.get(1).getBlockType()).isEqualTo("IMAGE");
+        assertThat(blocks.get(1).getImageUrl()).startsWith("/uploads/");
+        assertThat(blocks.get(1).getOriginalText()).isEqualTo("夜空の插画");
+        assertThat(blocks.get(2).getBlockType()).isEqualTo("TEXT");
+
+        Path storedImage = Paths.get("./target/test-uploads")
+                .resolve(blocks.get(1).getImageUrl().substring("/uploads/".length()).replace("/", "\\"));
+        assertThat(Files.exists(storedImage)).isTrue();
+    }
+
+    @Test
     void deleteBookRemovesRelatedRecordsAndStoredFile() {
         Long userId = createUser();
         MockMultipartFile file = new MockMultipartFile(
@@ -249,10 +279,63 @@ class BookServiceIntegrationTest {
         return outputStream.toByteArray();
     }
 
+    private byte[] createIllustratedEpub() throws IOException {
+        ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+        ZipOutputStream zipOutputStream = new ZipOutputStream(outputStream);
+
+        addEntry(zipOutputStream, "mimetype", "application/epub+zip");
+        addEntry(zipOutputStream, "META-INF/container.xml",
+                "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+                        + "<container version=\"1.0\" xmlns=\"urn:oasis:names:tc:opendocument:xmlns:container\">"
+                        + "<rootfiles>"
+                        + "<rootfile full-path=\"OEBPS/content.opf\" media-type=\"application/oebps-package+xml\"/>"
+                        + "</rootfiles>"
+                        + "</container>");
+        addEntry(zipOutputStream, "OEBPS/content.opf",
+                "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+                        + "<package version=\"2.0\" xmlns=\"http://www.idpf.org/2007/opf\" unique-identifier=\"bookid\">"
+                        + "<metadata xmlns:dc=\"http://purl.org/dc/elements/1.1/\">"
+                        + "<dc:title>Illustrated EPUB</dc:title>"
+                        + "<dc:creator>Service Test</dc:creator>"
+                        + "</metadata>"
+                        + "<manifest>"
+                        + "<item id=\"chapter1\" href=\"text/chapter1.xhtml\" media-type=\"application/xhtml+xml\"/>"
+                        + "<item id=\"scene\" href=\"images/scene.png\" media-type=\"image/png\"/>"
+                        + "</manifest>"
+                        + "<spine toc=\"ncx\">"
+                        + "<itemref idref=\"chapter1\"/>"
+                        + "</spine>"
+                        + "</package>");
+        addEntry(zipOutputStream, "OEBPS/text/chapter1.xhtml",
+                "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+                        + "<html xmlns=\"http://www.w3.org/1999/xhtml\"><body>"
+                        + "<h1>插画章</h1>"
+                        + "<p>夜空を見上げた。</p>"
+                        + "<img src=\"../images/scene.png\" alt=\"夜空の插画\" />"
+                        + "<p>彼女は黙っていた。</p>"
+                        + "</body></html>");
+        addBinaryEntry(zipOutputStream, "OEBPS/images/scene.png", tinyPng());
+
+        zipOutputStream.close();
+        return outputStream.toByteArray();
+    }
+
     private void addEntry(ZipOutputStream outputStream, String name, String content) throws IOException {
         ZipEntry entry = new ZipEntry(name);
         outputStream.putNextEntry(entry);
         outputStream.write(content.getBytes(StandardCharsets.UTF_8));
         outputStream.closeEntry();
+    }
+
+    private void addBinaryEntry(ZipOutputStream outputStream, String name, byte[] content) throws IOException {
+        ZipEntry entry = new ZipEntry(name);
+        outputStream.putNextEntry(entry);
+        outputStream.write(content);
+        outputStream.closeEntry();
+    }
+
+    private byte[] tinyPng() {
+        return Base64.getDecoder()
+                .decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO7Z0ioAAAAASUVORK5CYII=");
     }
 }

@@ -22,6 +22,9 @@ public class Paragraph {
     @TableField("paragraph_order")
     private Integer paragraphOrder;
 
+    @TableField("block_type")
+    private String blockType;
+
     @TableField("original_text")
     private String originalText;
 
@@ -32,6 +35,9 @@ public class Paragraph {
 
     @TableField("furigana_text")
     private String furiganaText;
+
+    @TableField("image_url")
+    private String imageUrl;
 
     @TableField("created_at")
     private LocalDateTime createdAt;

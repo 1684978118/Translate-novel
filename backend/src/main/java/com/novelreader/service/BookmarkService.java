@@ -87,10 +87,22 @@ public class BookmarkService {
                 .bookId(bookmark.getBookId())
                 .paragraphId(bookmark.getParagraphId())
                 .bookTitle(book == null ? "Unknown Book" : book.getTitle())
-                .paragraphPreview(paragraph == null ? "" : preview(paragraph.getOriginalText()))
+                .paragraphPreview(buildPreview(paragraph))
                 .note(bookmark.getNote())
                 .createdAt(bookmark.getCreatedAt())
                 .build();
+    }
+
+    private String buildPreview(Paragraph paragraph) {
+        if (paragraph == null) {
+            return "";
+        }
+        if ("IMAGE".equals(paragraph.getBlockType())) {
+            return preview(paragraph.getOriginalText() == null || paragraph.getOriginalText().trim().isEmpty()
+                    ? "[插画]"
+                    : paragraph.getOriginalText());
+        }
+        return preview(paragraph.getOriginalText());
     }
 
     private String preview(String text) {

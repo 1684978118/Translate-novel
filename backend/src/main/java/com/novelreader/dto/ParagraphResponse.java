@@ -11,8 +11,10 @@ public class ParagraphResponse {
 
     private Long id;
     private Integer paragraphOrder;
+    private String blockType;
     private String originalText;
     private String translation;
     private String furiganaText;
+    private String imageUrl;
     private List<SegmentTokenResponse> tokens;
 }

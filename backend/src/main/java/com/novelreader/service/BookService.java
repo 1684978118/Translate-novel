@@ -43,6 +43,8 @@ import org.springframework.web.multipart.MultipartFile;
 @Service
 public class BookService {
 
+    private static final String BLOCK_TYPE_TEXT = "TEXT";
+    private static final String BLOCK_TYPE_IMAGE = "IMAGE";
     private static final Pattern NUMBERED_CHAPTER_PATTERN = Pattern.compile(
             "^(第\\s*[0-9０-９一二三四五六七八九十百千零〇两兩]+\\s*[章话話节節卷篇部回])(.+)?$");
     private static final Pattern ENGLISH_CHAPTER_PATTERN = Pattern.compile(
@@ -121,18 +123,24 @@ public class BookService {
             chapterMapper.insert(chapter);
 
             int paragraphOrder = 1;
-            for (String text : parsedChapter.paragraphs) {
-                List<JapaneseSegmentService.TokenData> tokens = japaneseSegmentService.segment(text);
-
+            for (ParsedBlock block : parsedChapter.blocks) {
                 Paragraph paragraph = new Paragraph();
                 paragraph.setChapterId(chapter.getId());
-                paragraph.setParagraphOrder(paragraphOrder++);
-                paragraph.setOriginalText(text);
-                paragraph.setSegmentedText(writeJson(tokens));
+                paragraph.setParagraphOrder(paragraphOrder);
+                paragraph.setBlockType(block.type);
+                paragraph.setOriginalText(block.text);
                 paragraph.setCreatedAt(LocalDateTime.now());
-                paragraphMapper.insert(paragraph);
 
-                wordCount += tokens.size();
+                if (BLOCK_TYPE_TEXT.equals(block.type)) {
+                    List<JapaneseSegmentService.TokenData> tokens = japaneseSegmentService.segment(block.text);
+                    paragraph.setSegmentedText(writeJson(tokens));
+                    wordCount += tokens.size();
+                } else if (BLOCK_TYPE_IMAGE.equals(block.type)) {
+                    paragraph.setImageUrl(storeImageAsset(book.getFilePath(), block, paragraphOrder));
+                }
+
+                paragraphMapper.insert(paragraph);
+                paragraphOrder++;
             }
         }
 
@@ -394,7 +402,20 @@ public class BookService {
             return;
         }
         try {
-            Files.deleteIfExists(Paths.get(filePath));
+            Path sourcePath = Paths.get(filePath);
+            Files.deleteIfExists(sourcePath);
+
+            Path assetsPath = Paths.get(filePath + "_assets");
+            if (Files.exists(assetsPath)) {
+                Files.walk(assetsPath)
+                        .sorted((left, right) -> right.getNameCount() - left.getNameCount())
+                        .forEach(path -> {
+                            try {
+                                Files.deleteIfExists(path);
+                            } catch (IOException ignored) {
+                            }
+                        });
+            }
         } catch (IOException exception) {
             throw new BusinessException("Book deleted, but stored file cleanup failed");
         }
@@ -404,10 +425,69 @@ public class BookService {
         List<ParsedChapter> chapters = new ArrayList<ParsedChapter>();
         for (EpubParserService.EpubChapterContent chapter : epubBook.getChapters()) {
             ParsedChapter parsedChapter = new ParsedChapter(chapter.getTitle());
-            parsedChapter.paragraphs.addAll(chapter.getParagraphs());
+            for (EpubParserService.EpubContentBlock block : chapter.getBlocks()) {
+                if (BLOCK_TYPE_TEXT.equals(block.getType())) {
+                    parsedChapter.blocks.add(ParsedBlock.text(block.getText()));
+                } else if (BLOCK_TYPE_IMAGE.equals(block.getType())) {
+                    parsedChapter.blocks.add(ParsedBlock.image(
+                            block.getDescription(),
+                            block.getImageBytes(),
+                            block.getImageMediaType(),
+                            block.getImageFilename()));
+                }
+            }
             chapters.add(parsedChapter);
         }
         return new ParsedBook(epubBook.getTitle(), epubBook.getAuthor(), "EPUB", chapters);
+    }
+
+    private String storeImageAsset(String sourceFilePath, ParsedBlock block, int blockOrder) {
+        if (!BLOCK_TYPE_IMAGE.equals(block.type) || block.imageBytes == null || block.imageBytes.length == 0) {
+            return null;
+        }
+
+        try {
+            Path assetDirectory = Paths.get(sourceFilePath + "_assets");
+            Files.createDirectories(assetDirectory);
+
+            String storedName = String.format("%03d-%s%s",
+                    Integer.valueOf(blockOrder),
+                    UUID.randomUUID().toString(),
+                    detectImageExtension(block));
+            Path destination = assetDirectory.resolve(storedName);
+            Files.write(destination, block.imageBytes);
+
+            String relativePath = Paths.get(uploadDir).toAbsolutePath().normalize()
+                    .relativize(destination.toAbsolutePath().normalize())
+                    .toString()
+                    .replace('\\', '/');
+            return "/uploads/" + relativePath;
+        } catch (IOException exception) {
+            throw new BusinessException("Failed to store EPUB illustration");
+        }
+    }
+
+    private String detectImageExtension(ParsedBlock block) {
+        String mediaType = block.imageMediaType == null ? "" : block.imageMediaType.toLowerCase();
+        if ("image/png".equals(mediaType)) {
+            return ".png";
+        }
+        if ("image/gif".equals(mediaType)) {
+            return ".gif";
+        }
+        if ("image/webp".equals(mediaType)) {
+            return ".webp";
+        }
+        if ("image/svg+xml".equals(mediaType)) {
+            return ".svg";
+        }
+        if (block.imageFilename != null) {
+            int dotIndex = block.imageFilename.lastIndexOf('.');
+            if (dotIndex >= 0) {
+                return block.imageFilename.substring(dotIndex);
+            }
+        }
+        return ".jpg";
     }
 
     private ParsedBook parseTxt(String content, String filename) {
@@ -420,7 +500,7 @@ public class BookService {
             String line = rawLine == null ? "" : rawLine.trim();
             if (isChapterTitle(line)) {
                 flushParagraph(currentChapter, paragraphBuffer);
-                if (!currentChapter.paragraphs.isEmpty()) {
+                if (!currentChapter.blocks.isEmpty()) {
                     chapters.add(currentChapter);
                 }
                 currentChapter = new ParsedChapter(line);
@@ -439,7 +519,7 @@ public class BookService {
         }
 
         flushParagraph(currentChapter, paragraphBuffer);
-        if (!currentChapter.paragraphs.isEmpty()) {
+        if (!currentChapter.blocks.isEmpty()) {
             chapters.add(currentChapter);
         }
 
@@ -463,7 +543,7 @@ public class BookService {
         if (paragraphBuffer.length() == 0) {
             return;
         }
-        chapter.paragraphs.add(paragraphBuffer.toString().trim());
+        chapter.blocks.add(ParsedBlock.text(paragraphBuffer.toString().trim()));
         paragraphBuffer.setLength(0);
     }
 
@@ -488,10 +568,39 @@ public class BookService {
 
     private static class ParsedChapter {
         private final String title;
-        private final List<String> paragraphs = new ArrayList<String>();
+        private final List<ParsedBlock> blocks = new ArrayList<ParsedBlock>();
 
         private ParsedChapter(String title) {
             this.title = title;
+        }
+    }
+
+    private static class ParsedBlock {
+        private final String type;
+        private final String text;
+        private final byte[] imageBytes;
+        private final String imageMediaType;
+        private final String imageFilename;
+
+        private ParsedBlock(String type, String text, byte[] imageBytes, String imageMediaType, String imageFilename) {
+            this.type = type;
+            this.text = text;
+            this.imageBytes = imageBytes;
+            this.imageMediaType = imageMediaType;
+            this.imageFilename = imageFilename;
+        }
+
+        private static ParsedBlock text(String text) {
+            return new ParsedBlock(BLOCK_TYPE_TEXT, text == null ? "" : text, null, "", "");
+        }
+
+        private static ParsedBlock image(String text, byte[] imageBytes, String imageMediaType, String imageFilename) {
+            return new ParsedBlock(
+                    BLOCK_TYPE_IMAGE,
+                    text == null ? "" : text,
+                    imageBytes,
+                    imageMediaType == null ? "" : imageMediaType,
+                    imageFilename == null ? "" : imageFilename);
         }
     }
 }

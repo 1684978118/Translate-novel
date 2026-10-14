@@ -1,6 +1,7 @@
 package com.novelreader.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
@@ -11,7 +12,9 @@ import com.novelreader.dto.WordDefinitionRequest;
 import com.novelreader.dto.WordDefinitionResponse;
 import com.novelreader.dto.WordRequest;
 import com.novelreader.dto.WordResponse;
+import com.novelreader.entity.Paragraph;
 import com.novelreader.entity.WordDictionary;
+import com.novelreader.exception.BusinessException;
 import com.novelreader.mapper.ParagraphMapper;
 import com.novelreader.mapper.WordDictionaryMapper;
 
@@ -177,5 +180,25 @@ class ReadAndWordServiceTest {
         assertThat(response.getWord()).isEqualTo("尻餅");
         assertThat(response.getReading()).isEqualTo("しりもち");
         assertThat(response.getMeaning()).isEqualTo("一屁股跌坐在地");
+    }
+
+    @Test
+    void translateParagraphRejectsImageBlocks() {
+        Paragraph paragraph = new Paragraph();
+        paragraph.setId(12L);
+        paragraph.setBlockType("IMAGE");
+        paragraph.setOriginalText("插画");
+        when(paragraphMapper.selectById(12L)).thenReturn(paragraph);
+
+        ReadService readService = new ReadService(
+                paragraphMapper,
+                translationService,
+                japaneseSegmentService,
+                grammarAnalysisService,
+                new ObjectMapper());
+
+        assertThatThrownBy(() -> readService.translateParagraph(12L))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("只有文字内容支持翻译");
     }
 }

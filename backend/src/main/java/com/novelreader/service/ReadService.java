@@ -31,6 +31,8 @@ public class ReadService {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(ReadService.class);
 
+    private static final String BLOCK_TYPE_TEXT = "TEXT";
+    private static final String BLOCK_TYPE_IMAGE = "IMAGE";
     private static final String WORD_MEANING_FALLBACK = "暂未获取到可靠释义，可先加入生词本后补充。";
     private static final String WORD_MEANING_SYSTEM_PROMPT =
             "你是面向中文读者的日语词典助手。结合上下文解释指定的日语单词，输出词典式释义。"
@@ -71,6 +73,7 @@ public class ReadService {
     @Transactional(rollbackFor = Exception.class)
     public TranslateResponse translateParagraph(Long paragraphId) {
         Paragraph paragraph = getParagraph(paragraphId);
+        ensureTextBlock(paragraph, "只有文字内容支持翻译");
         if (paragraph.getTranslation() == null || paragraph.getTranslation().trim().isEmpty()) {
             paragraph.setTranslation(translationService.translate(paragraph.getOriginalText()));
             paragraphMapper.updateById(paragraph);
@@ -86,6 +89,7 @@ public class ReadService {
     @Transactional(rollbackFor = Exception.class)
     public FuriganaResponse buildFurigana(Long paragraphId) {
         Paragraph paragraph = getParagraph(paragraphId);
+        ensureTextBlock(paragraph, "只有文字内容支持注音");
         if (paragraph.getFuriganaText() == null || paragraph.getFuriganaText().trim().isEmpty()) {
             paragraph.setFuriganaText(japaneseSegmentService.toRubyHtml(paragraph.getOriginalText()));
             paragraphMapper.updateById(paragraph);
@@ -99,6 +103,7 @@ public class ReadService {
 
     public com.novelreader.dto.GrammarResponse analyzeGrammar(Long paragraphId) {
         Paragraph paragraph = getParagraph(paragraphId);
+        ensureTextBlock(paragraph, "只有文字内容支持语法分析");
         return grammarAnalysisService.analyze(paragraphId, paragraph.getOriginalText());
     }
 
@@ -464,11 +469,25 @@ public class ReadService {
         return ParagraphResponse.builder()
                 .id(paragraph.getId())
                 .paragraphOrder(paragraph.getParagraphOrder())
+                .blockType(paragraph.getBlockType())
                 .originalText(paragraph.getOriginalText())
                 .translation(paragraph.getTranslation())
                 .furiganaText(paragraph.getFuriganaText())
-                .tokens(readTokens(paragraph.getSegmentedText()))
+                .imageUrl(paragraph.getImageUrl())
+                .tokens(BLOCK_TYPE_TEXT.equals(paragraph.getBlockType())
+                        ? readTokens(paragraph.getSegmentedText())
+                        : Collections.<SegmentTokenResponse>emptyList())
                 .build();
+    }
+
+    private void ensureTextBlock(Paragraph paragraph, String message) {
+        String blockType = paragraph.getBlockType();
+        if (blockType == null || blockType.trim().isEmpty()) {
+            return;
+        }
+        if (!BLOCK_TYPE_TEXT.equals(blockType)) {
+            throw new BusinessException(message);
+        }
     }
 
     private List<SegmentTokenResponse> readTokens(String json) {

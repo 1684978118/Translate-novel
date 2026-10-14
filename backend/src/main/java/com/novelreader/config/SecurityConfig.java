@@ -50,6 +50,7 @@ public class SecurityConfig {
                 .authorizeRequests()
                 .antMatchers("/api/auth/register", "/api/auth/login", "/api/auth/refresh").permitAll()
                 .antMatchers(HttpMethod.GET, "/api/health").permitAll()
+                .antMatchers(HttpMethod.GET, "/uploads/**").permitAll()
                 .antMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                 .anyRequest().authenticated();
 

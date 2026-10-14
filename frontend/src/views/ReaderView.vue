@@ -2,6 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useRoute, useRouter } from 'vue-router'
+import ImageBlock from '@/components/ImageBlock.vue'
 import ParagraphBlock from '@/components/ParagraphBlock.vue'
 import WordDrawer from '@/components/WordDrawer.vue'
 import { fetchBookDetail, fetchProgress, saveProgress } from '@/api/book'
@@ -503,7 +504,13 @@ onBeforeUnmount(() => {
             :data-paragraph-id="paragraph.id"
             class="reader-stream__item"
           >
+            <ImageBlock
+              v-if="paragraph.blockType === 'IMAGE'"
+              :block="paragraph"
+              @bookmark="handleBookmark"
+            />
             <ParagraphBlock
+              v-else
               :paragraph="paragraph"
               @analyze="handleAnalyze"
               @translate="handleTranslate"

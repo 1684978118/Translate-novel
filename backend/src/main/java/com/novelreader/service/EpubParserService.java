@@ -55,8 +55,13 @@ public class EpubParserService {
                 continue;
             }
 
-            EpubChapterContent chapter = parseChapter(chapterBytes, fallbackTitle(manifestItem.href, fallbackIndex));
-            if (!chapter.getParagraphs().isEmpty()) {
+            EpubChapterContent chapter = parseChapter(
+                    chapterBytes,
+                    resourcePath,
+                    metadata.manifestByPath,
+                    entries,
+                    fallbackTitle(manifestItem.href, fallbackIndex));
+            if (!chapter.getBlocks().isEmpty()) {
                 chapters.add(chapter);
                 fallbackIndex++;
             }
@@ -119,8 +124,10 @@ public class EpubParserService {
 
             String title = readFirstText(document, "title");
             String author = readFirstText(document, "creator");
+            String baseDir = parentDirectory(opfPath);
 
             Map<String, ManifestItem> manifest = new LinkedHashMap<String, ManifestItem>();
+            Map<String, ManifestItem> manifestByPath = new LinkedHashMap<String, ManifestItem>();
             NodeList items = document.getElementsByTagNameNS("*", "item");
             for (int index = 0; index < items.getLength(); index++) {
                 org.w3c.dom.Node item = items.item(index);
@@ -130,10 +137,12 @@ public class EpubParserService {
                 if (idNode == null || hrefNode == null) {
                     continue;
                 }
-                manifest.put(idNode.getNodeValue(), new ManifestItem(
+                ManifestItem manifestItem = new ManifestItem(
                         idNode.getNodeValue(),
                         hrefNode.getNodeValue(),
-                        mediaTypeNode == null ? "" : mediaTypeNode.getNodeValue()));
+                        mediaTypeNode == null ? "" : mediaTypeNode.getNodeValue());
+                manifest.put(idNode.getNodeValue(), manifestItem);
+                manifestByPath.put(resolveEntryPath(baseDir, manifestItem.href), manifestItem);
             }
 
             List<String> spineItemIds = new ArrayList<String>();
@@ -150,7 +159,7 @@ public class EpubParserService {
                 throw new BusinessException("EPUB spine is empty");
             }
 
-            return new PackageMetadata(title, author, manifest, spineItemIds, opfPath);
+            return new PackageMetadata(title, author, manifest, manifestByPath, spineItemIds, opfPath);
         } catch (BusinessException exception) {
             throw exception;
         } catch (Exception exception) {
@@ -158,56 +167,54 @@ public class EpubParserService {
         }
     }
 
-    private EpubChapterContent parseChapter(byte[] chapterBytes, String fallbackTitle) {
+    private EpubChapterContent parseChapter(byte[] chapterBytes, String chapterPath,
+            Map<String, ManifestItem> manifestByPath, Map<String, byte[]> entries, String fallbackTitle) {
         try {
             Document document = Jsoup.parse(new ByteArrayInputStream(chapterBytes), null, "", Parser.xmlParser());
             document.outputSettings().escapeMode(Entities.EscapeMode.xhtml);
 
             Element body = document.selectFirst("body");
             if (body == null) {
-                return new EpubChapterContent(fallbackTitle, new ArrayList<String>());
+                return new EpubChapterContent(fallbackTitle, new ArrayList<EpubContentBlock>());
             }
 
-            body.select("script, style, nav, svg, img, iframe").remove();
+            body.select("script, style, nav, iframe").remove();
             String title = firstNonBlank(
                     textOf(body.selectFirst("h1, h2, h3")),
                     textOf(document.selectFirst("head > title")),
                     fallbackTitle);
 
-            List<String> paragraphs = collectParagraphs(body);
-            if (paragraphs.isEmpty()) {
+            List<EpubContentBlock> blocks = collectBlocks(body, parentDirectory(chapterPath), manifestByPath, entries);
+            if (blocks.isEmpty()) {
                 String wholeText = plainText(body);
                 if (hasText(wholeText)) {
-                    paragraphs.add(wholeText);
+                    blocks.add(EpubContentBlock.text(wholeText));
                 }
             }
 
-            return new EpubChapterContent(title, paragraphs);
+            return new EpubChapterContent(title, blocks);
         } catch (IOException exception) {
             throw new BusinessException("Failed to read EPUB chapter");
         }
     }
 
-    private List<String> collectParagraphs(Element body) {
-        List<String> paragraphs = new ArrayList<String>();
-
-        List<Element> preferredParagraphs = body.select("p");
-        if (!preferredParagraphs.isEmpty()) {
-            for (Element paragraph : preferredParagraphs) {
-                addParagraph(paragraphs, plainText(paragraph));
-            }
-            return paragraphs;
-        }
+    private List<EpubContentBlock> collectBlocks(Element body, String chapterBaseDir,
+            Map<String, ManifestItem> manifestByPath, Map<String, byte[]> entries) {
+        List<EpubContentBlock> blocks = new ArrayList<EpubContentBlock>();
+        StringBuilder textBuffer = new StringBuilder();
 
         for (Node node : body.childNodes()) {
-            collectFallbackParagraphs(node, paragraphs);
+            collectBlocks(node, blocks, textBuffer, chapterBaseDir, manifestByPath, entries);
         }
-        return paragraphs;
+
+        flushTextBlock(blocks, textBuffer);
+        return blocks;
     }
 
-    private void collectFallbackParagraphs(Node node, List<String> paragraphs) {
+    private void collectBlocks(Node node, List<EpubContentBlock> blocks, StringBuilder textBuffer, String chapterBaseDir,
+            Map<String, ManifestItem> manifestByPath, Map<String, byte[]> entries) {
         if (node instanceof TextNode) {
-            addParagraph(paragraphs, ((TextNode) node).text());
+            textBuffer.append(((TextNode) node).text());
             return;
         }
 
@@ -218,46 +225,172 @@ public class EpubParserService {
         Element element = (Element) node;
         String tag = element.normalName();
 
-        if (Arrays.asList("script", "style", "nav", "svg", "img", "iframe").contains(tag)) {
+        if (Arrays.asList("script", "style", "nav", "iframe").contains(tag)) {
+            return;
+        }
+
+        // ruby 注音（rt/rp）不属于正文，跳过以避免读音混入原文（如「静<rt>せい</rt>」变成「静せい」）。
+        if ("rt".equals(tag) || "rp".equals(tag)) {
             return;
         }
 
         if (Arrays.asList("h1", "h2", "h3", "h4", "h5", "h6").contains(tag)) {
+            flushTextBlock(blocks, textBuffer);
             return;
         }
 
-        if (isFallbackBlock(tag) && !hasFallbackBlockChildren(element)) {
-            addParagraph(paragraphs, plainText(element));
+        if ("br".equals(tag)) {
+            flushTextBlock(blocks, textBuffer);
             return;
+        }
+
+        if ("img".equals(tag)) {
+            flushTextBlock(blocks, textBuffer);
+            addImageBlock(blocks, element.attr("src"), firstNonBlank(element.attr("alt"), element.attr("title")),
+                    chapterBaseDir, manifestByPath, entries);
+            return;
+        }
+
+        if ("svg".equals(tag)) {
+            flushTextBlock(blocks, textBuffer);
+            Element image = findSvgImageElement(element);
+            if (image != null) {
+                addImageBlock(
+                        blocks,
+                        firstNonBlank(image.attr("href"), image.attr("xlink:href"), image.attr("src")),
+                        firstNonBlank(element.attr("aria-label"), element.attr("title")),
+                        chapterBaseDir,
+                        manifestByPath,
+                        entries);
+            }
+            return;
+        }
+
+        boolean blockBoundary = isBlockBoundary(tag);
+        if (blockBoundary) {
+            flushTextBlock(blocks, textBuffer);
         }
 
         for (Node child : element.childNodes()) {
-            collectFallbackParagraphs(child, paragraphs);
+            collectBlocks(child, blocks, textBuffer, chapterBaseDir, manifestByPath, entries);
+        }
+
+        if (blockBoundary) {
+            flushTextBlock(blocks, textBuffer);
         }
     }
 
-    private boolean hasFallbackBlockChildren(Element element) {
-        for (Element child : element.children()) {
-            if (isFallbackBlock(child.normalName()) || "p".equals(child.normalName())) {
-                return true;
+    private Element findSvgImageElement(Element svgElement) {
+        for (Element child : svgElement.getAllElements()) {
+            if (!"image".equals(child.normalName())) {
+                continue;
+            }
+            if (hasText(child.attr("href")) || hasText(child.attr("xlink:href")) || hasText(child.attr("src"))) {
+                return child;
             }
         }
-        return false;
+        return null;
     }
 
-    private boolean isFallbackBlock(String tag) {
-        return Arrays.asList("div", "li", "blockquote", "pre", "section", "article")
+    private boolean isBlockBoundary(String tag) {
+        return Arrays.asList("p", "div", "li", "blockquote", "pre", "section", "article", "figure", "figcaption")
                 .contains(tag);
     }
 
-    private void addParagraph(List<String> paragraphs, String candidate) {
+    private void flushTextBlock(List<EpubContentBlock> blocks, StringBuilder textBuffer) {
+        if (textBuffer.length() == 0) {
+            return;
+        }
+        addTextBlock(blocks, textBuffer.toString());
+        textBuffer.setLength(0);
+    }
+
+    private void addTextBlock(List<EpubContentBlock> blocks, String candidate) {
         String normalized = normalizeText(candidate);
         if (!hasText(normalized)) {
             return;
         }
-        if (paragraphs.isEmpty() || !normalized.equals(paragraphs.get(paragraphs.size() - 1))) {
-            paragraphs.add(normalized);
+        if (!blocks.isEmpty()) {
+            EpubContentBlock lastBlock = blocks.get(blocks.size() - 1);
+            if ("TEXT".equals(lastBlock.getType()) && normalized.equals(lastBlock.getText())) {
+                return;
+            }
         }
+        blocks.add(EpubContentBlock.text(normalized));
+    }
+
+    private void addImageBlock(List<EpubContentBlock> blocks, String source, String description,
+            String chapterBaseDir, Map<String, ManifestItem> manifestByPath, Map<String, byte[]> entries) {
+        String normalizedSource = normalizeResourceReference(source);
+        if (!hasText(normalizedSource) || normalizedSource.startsWith("data:")) {
+            return;
+        }
+
+        String resourcePath = resolveEntryPath(chapterBaseDir, normalizedSource);
+        byte[] imageBytes = entries.get(resourcePath);
+        if (imageBytes == null || imageBytes.length == 0) {
+            return;
+        }
+
+        ManifestItem manifestItem = manifestByPath.get(resourcePath);
+        String mediaType = manifestItem == null ? inferMediaType(resourcePath) : manifestItem.mediaType;
+        if (!isSupportedImage(mediaType)) {
+            return;
+        }
+
+        blocks.add(EpubContentBlock.image(
+                normalizeText(description),
+                imageBytes,
+                mediaType,
+                filenameOf(resourcePath)));
+    }
+
+    private String normalizeResourceReference(String source) {
+        if (source == null) {
+            return "";
+        }
+        String normalized = source.trim();
+        int queryIndex = normalized.indexOf('?');
+        if (queryIndex >= 0) {
+            normalized = normalized.substring(0, queryIndex);
+        }
+        int fragmentIndex = normalized.indexOf('#');
+        if (fragmentIndex >= 0) {
+            normalized = normalized.substring(0, fragmentIndex);
+        }
+        return normalized.trim();
+    }
+
+    private boolean isSupportedImage(String mediaType) {
+        return mediaType != null && mediaType.toLowerCase().startsWith("image/");
+    }
+
+    private String inferMediaType(String resourcePath) {
+        String path = resourcePath == null ? "" : resourcePath.toLowerCase();
+        if (path.endsWith(".png")) {
+            return "image/png";
+        }
+        if (path.endsWith(".jpg") || path.endsWith(".jpeg")) {
+            return "image/jpeg";
+        }
+        if (path.endsWith(".gif")) {
+            return "image/gif";
+        }
+        if (path.endsWith(".webp")) {
+            return "image/webp";
+        }
+        if (path.endsWith(".svg")) {
+            return "image/svg+xml";
+        }
+        return "";
+    }
+
+    private String filenameOf(String resourcePath) {
+        if (resourcePath == null || resourcePath.isEmpty()) {
+            return "image";
+        }
+        int slashIndex = resourcePath.lastIndexOf('/');
+        return slashIndex >= 0 ? resourcePath.substring(slashIndex + 1) : resourcePath;
     }
 
     private String normalizeText(String value) {
@@ -356,15 +489,17 @@ public class EpubParserService {
         private final String title;
         private final String author;
         private final Map<String, ManifestItem> manifest;
+        private final Map<String, ManifestItem> manifestByPath;
         private final List<String> spineItemIds;
         @SuppressWarnings("unused")
         private final String opfPath;
 
         private PackageMetadata(String title, String author, Map<String, ManifestItem> manifest,
-                List<String> spineItemIds, String opfPath) {
+                Map<String, ManifestItem> manifestByPath, List<String> spineItemIds, String opfPath) {
             this.title = title;
             this.author = author;
             this.manifest = manifest;
+            this.manifestByPath = manifestByPath;
             this.spineItemIds = spineItemIds;
             this.opfPath = opfPath;
         }
@@ -408,19 +543,81 @@ public class EpubParserService {
 
     public static class EpubChapterContent {
         private final String title;
-        private final List<String> paragraphs;
+        private final List<EpubContentBlock> blocks;
 
-        public EpubChapterContent(String title, List<String> paragraphs) {
+        public EpubChapterContent(String title, List<EpubContentBlock> blocks) {
             this.title = title;
-            this.paragraphs = paragraphs;
+            this.blocks = blocks;
         }
 
         public String getTitle() {
             return title;
         }
 
+        public List<EpubContentBlock> getBlocks() {
+            return blocks;
+        }
+
         public List<String> getParagraphs() {
+            List<String> paragraphs = new ArrayList<String>();
+            for (EpubContentBlock block : blocks) {
+                if ("TEXT".equals(block.getType()) && block.getText() != null && !block.getText().trim().isEmpty()) {
+                    paragraphs.add(block.getText());
+                }
+            }
             return paragraphs;
+        }
+    }
+
+    public static class EpubContentBlock {
+        private final String type;
+        private final String text;
+        private final String description;
+        private final byte[] imageBytes;
+        private final String imageMediaType;
+        private final String imageFilename;
+
+        private EpubContentBlock(String type, String text, String description, byte[] imageBytes, String imageMediaType,
+                String imageFilename) {
+            this.type = type;
+            this.text = text;
+            this.description = description;
+            this.imageBytes = imageBytes;
+            this.imageMediaType = imageMediaType;
+            this.imageFilename = imageFilename;
+        }
+
+        public static EpubContentBlock text(String text) {
+            return new EpubContentBlock("TEXT", text, "", null, "", "");
+        }
+
+        public static EpubContentBlock image(String description, byte[] imageBytes, String imageMediaType,
+                String imageFilename) {
+            return new EpubContentBlock("IMAGE", "", description, imageBytes, imageMediaType, imageFilename);
+        }
+
+        public String getType() {
+            return type;
+        }
+
+        public String getText() {
+            return text;
+        }
+
+        public String getDescription() {
+            return description;
+        }
+
+        public byte[] getImageBytes() {
+            return imageBytes;
+        }
+
+        public String getImageMediaType() {
+            return imageMediaType;
+        }
+
+        public String getImageFilename() {
+            return imageFilename;
         }
     }
 }
