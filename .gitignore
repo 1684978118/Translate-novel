@@ -1,7 +1,16 @@
+# IDE / 编辑器
 .idea/
+.vscode/
 .claude/
 
+# 依赖与构建产物
+node_modules/
+dist/
+target/
+
+# 运行时数据
 backend/data/
 backend/uploads/
 
+# 日志
 *.log

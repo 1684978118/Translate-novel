@@ -2,7 +2,6 @@ package com.novelreader.security;
 
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.novelreader.entity.User;
-import com.novelreader.exception.BusinessException;
 import com.novelreader.mapper.UserMapper;
 
 import org.springframework.security.core.userdetails.UserDetails;
@@ -31,7 +30,7 @@ public class CustomUserDetailsService implements UserDetailsService {
     public UserDetails loadUserById(Long userId) {
         User user = userMapper.selectById(userId);
         if (user == null) {
-            throw new BusinessException("User not found");
+            throw new UsernameNotFoundException("User not found");
         }
         return new AuthenticatedUser(user);
     }

@@ -233,6 +233,17 @@ public class BookService {
     public ProgressResponse updateProgress(Long bookId, Long userId, ProgressRequest request) {
         getOwnedBook(bookId, userId);
 
+        Long chapterId = request.getChapterId();
+        Long paragraphId = request.getParagraphId();
+        Chapter chapter = chapterMapper.selectById(chapterId);
+        if (chapter == null || !bookId.equals(chapter.getBookId())) {
+            throw new BusinessException("Chapter does not belong to this book");
+        }
+        Paragraph paragraph = paragraphMapper.selectById(paragraphId);
+        if (paragraph == null || !chapterId.equals(paragraph.getChapterId())) {
+            throw new BusinessException("Paragraph does not belong to this chapter");
+        }
+
         ReadingProgress progress = readingProgressMapper.selectOne(Wrappers.<ReadingProgress>lambdaQuery()
                 .eq(ReadingProgress::getUserId, userId)
                 .eq(ReadingProgress::getBookId, bookId));
@@ -243,8 +254,8 @@ public class BookService {
             progress.setBookId(bookId);
         }
 
-        progress.setChapterId(request.getChapterId());
-        progress.setParagraphId(request.getParagraphId());
+        progress.setChapterId(chapterId);
+        progress.setParagraphId(paragraphId);
         progress.setScrollPosition(request.getScrollPosition() == null ? 0 : request.getScrollPosition());
         progress.setUpdatedAt(LocalDateTime.now());
 
@@ -292,6 +303,22 @@ public class BookService {
             throw new BusinessException("You do not have access to this book");
         }
         return book;
+    }
+
+    public void assertChapterOwnership(Long chapterId, Long userId) {
+        Chapter chapter = chapterId == null ? null : chapterMapper.selectById(chapterId);
+        if (chapter == null) {
+            throw new BusinessException("Chapter not found");
+        }
+        getOwnedBook(chapter.getBookId(), userId);
+    }
+
+    public void assertParagraphOwnership(Long paragraphId, Long userId) {
+        Paragraph paragraph = paragraphId == null ? null : paragraphMapper.selectById(paragraphId);
+        if (paragraph == null) {
+            throw new BusinessException("Paragraph not found");
+        }
+        assertChapterOwnership(paragraph.getChapterId(), userId);
     }
 
     private BookSummaryResponse toSummary(Book book, int chapterCount) {

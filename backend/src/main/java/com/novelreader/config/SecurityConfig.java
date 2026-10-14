@@ -48,12 +48,11 @@ public class SecurityConfig {
                 .sessionManagement().sessionCreationPolicy(SessionCreationPolicy.STATELESS).and()
                 .exceptionHandling().authenticationEntryPoint(restAuthenticationEntryPoint).and()
                 .authorizeRequests()
-                .antMatchers("/api/auth/register", "/api/auth/login", "/api/auth/refresh", "/h2-console/**").permitAll()
+                .antMatchers("/api/auth/register", "/api/auth/login", "/api/auth/refresh").permitAll()
                 .antMatchers(HttpMethod.GET, "/api/health").permitAll()
                 .antMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                 .anyRequest().authenticated();
 
-        http.headers().frameOptions().sameOrigin();
         http.addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
         return http.build();
     }

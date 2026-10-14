@@ -11,8 +11,8 @@
 ┌─────────────────────────────────────────────────────────┐
 │                      前端 (Vue 3)                        │
 │  - Vite + Pinia + Vue Router + Element Plus             │
-│  - 日语分词库: kuromoji.js                               │
-│  - epub.js: epub阅读渲染                                 │
+│  - axios 调用 REST API，自动刷新 JWT                     │
+│  - 阅读器：段落级翻译 / 注音 / 语法交互                  │
 └─────────────────────┬───────────────────────────────────┘
                       │ HTTP/REST + JWT
 ┌─────────────────────▼───────────────────────────────────┐
@@ -295,14 +295,10 @@ const routes = [
   { path: '/', redirect: '/login' },
   { path: '/login', component: Login },
   { path: '/register', component: Register },
-  { path: '/shelf', component: Shelf },           // 书架（首页）
-  { path: '/shelf/upload', component: Upload },  // 上传小说
-  { path: '/read/:bookId', component: Reader,  // 阅读器
-    children: [
-      { path: '', redirect: 'chapter/1' },
-      { path: 'chapter/:chapterId', component: ChapterView }
-    ]
-  },
+  { path: '/library', component: Library },        // 书架（首页）
+  { path: '/library/upload', component: Upload },  // 上传小说
+  { path: '/read/:bookId', component: Reader },                 // 阅读器
+  { path: '/read/:bookId/chapter/:chapterId?', component: Reader },
   { path: '/bookmarks', component: Bookmarks },    // 书签页
   { path: '/words', component: WordBook },         // 生词本
   { path: '/profile', component: Profile }         // 个人设置

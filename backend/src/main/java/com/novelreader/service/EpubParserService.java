@@ -73,8 +73,7 @@ public class EpubParserService {
 
     private Map<String, byte[]> unzip(byte[] fileBytes) {
         Map<String, byte[]> entries = new LinkedHashMap<String, byte[]>();
-        try {
-            ZipInputStream inputStream = new ZipInputStream(new ByteArrayInputStream(fileBytes));
+        try (ZipInputStream inputStream = new ZipInputStream(new ByteArrayInputStream(fileBytes))) {
             ZipEntry entry;
             while ((entry = inputStream.getNextEntry()) != null) {
                 if (entry.isDirectory()) {
@@ -89,7 +88,6 @@ public class EpubParserService {
                 }
                 entries.put(entry.getName(), outputStream.toByteArray());
             }
-            inputStream.close();
             return entries;
         } catch (IOException exception) {
             throw new BusinessException("Failed to unzip EPUB file");

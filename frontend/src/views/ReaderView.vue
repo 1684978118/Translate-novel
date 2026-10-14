@@ -6,7 +6,7 @@ import ParagraphBlock from '@/components/ParagraphBlock.vue'
 import WordDrawer from '@/components/WordDrawer.vue'
 import { fetchBookDetail, fetchProgress, saveProgress } from '@/api/book'
 import { createBookmark, createWord } from '@/api/collection'
-import { analyzeGrammar, fetchFurigana, fetchParagraphs, lookupWord, translateParagraph } from '@/api/read'
+import { analyzeGrammar, fetchParagraphs, lookupWord, translateParagraph } from '@/api/read'
 import { useReaderStore } from '@/stores/reader'
 
 const READER_THEMES = [
@@ -253,29 +253,9 @@ async function handleTranslate(paragraph) {
   }
 }
 
-async function handleFurigana(paragraph) {
-  if (paragraph.furiganaVisible) {
-    paragraph.furiganaVisible = false
-    return
-  }
-
+function handleFurigana(paragraph) {
   paragraph.analysisError = ''
-  paragraph.furiganaVisible = true
-
-  if (paragraph.furiganaText || paragraph.furiganaLoading) {
-    return
-  }
-
-  paragraph.furiganaLoading = true
-  try {
-    const result = await fetchFurigana(paragraph.id)
-    paragraph.furiganaText = result.data.rubyHtml
-  } catch (error) {
-    paragraph.furiganaVisible = false
-    paragraph.analysisError = error.message || '注音加载失败，请稍后重试。'
-  } finally {
-    paragraph.furiganaLoading = false
-  }
+  paragraph.furiganaVisible = !paragraph.furiganaVisible
 }
 
 async function handleGrammar(paragraph) {

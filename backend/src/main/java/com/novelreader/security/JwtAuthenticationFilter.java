@@ -33,13 +33,19 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         String token = resolveToken(request);
         if (StringUtils.hasText(token) && jwtUtils.validateToken(token)
                 && SecurityContextHolder.getContext().getAuthentication() == null) {
-            AuthenticatedUser user = (AuthenticatedUser) customUserDetailsService.loadUserById(jwtUtils.getUserId(token));
-            UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
-                    user,
-                    null,
-                    user.getAuthorities());
-            authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
-            SecurityContextHolder.getContext().setAuthentication(authentication);
+            try {
+                AuthenticatedUser user = (AuthenticatedUser) customUserDetailsService
+                        .loadUserById(jwtUtils.getUserId(token));
+                UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
+                        user,
+                        null,
+                        user.getAuthorities());
+                authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+                SecurityContextHolder.getContext().setAuthentication(authentication);
+            } catch (Exception exception) {
+                // 令牌有效但用户已不存在等异常：不写入认证信息，交给入口点返回 401，避免抛出 500
+                SecurityContextHolder.clearContext();
+            }
         }
 
         filterChain.doFilter(request, response);

@@ -8,10 +8,6 @@ export function translateParagraph(paragraphId) {
   return http.post(`/read/paragraph/${paragraphId}/translate`)
 }
 
-export function fetchFurigana(paragraphId) {
-  return http.post(`/read/paragraph/${paragraphId}/furigana`)
-}
-
 export function analyzeGrammar(paragraphId) {
   return http.post(`/read/paragraph/${paragraphId}/grammar`)
 }

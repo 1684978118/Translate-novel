@@ -74,6 +74,9 @@ onMounted(load)
           <el-form-item label="释义">
             <el-input v-model="form.meaning" type="textarea" :rows="3" />
           </el-form-item>
+          <el-form-item label="例句">
+            <el-input v-model="form.exampleSentence" type="textarea" :rows="2" />
+          </el-form-item>
           <el-button type="primary" round @click="submit">保存</el-button>
         </el-form>
       </div>
