@@ -1,25 +1,25 @@
-# 前端（Vue 3 + Vite）
+# フロントエンド（Vue 3 + Vite）
 
-日语小说阅读平台的前端，配合 [backend](../backend) 的 REST API 使用。
+日本語小説読解支援プラットフォームのフロントエンド。[backend](../backend) の REST API と連携します。
 
-## 功能
+## 主な機能
 
-- 书架：上传 TXT / EPUB（自动解析章节与段落）、删除书籍
-- 阅读器：段落级翻译、注音（ruby）、语法要点、点词释义
-- 收藏：书签、生词本、阅读进度续读
+- 本棚：TXT / EPUB のアップロード（章立て・段落の自動解析）、書籍の削除
+- リーダー：段落単位の翻訳、ふりがな（ルビ）、文法解説、ワンタップ単語検索
+- コレクション：ブックマーク、単語帳、読書進捗からの復帰
 
-## 技术栈
+## 技術スタック
 
 - Vue 3（`<script setup>`）+ Vue Router 4 + Pinia
-- Element Plus 组件库
-- axios：请求拦截器自动附加 JWT，令牌临近过期或收到 401 时用 refresh token 静默续期
+- Element Plus
+- axios：リクエストインターセプタで JWT を自動付与し、トークンの失効が近い場合や 401 応答時は refresh token でサイレントに再取得
 
-## 本地开发
+## 開発
 
 ```bash
 npm install
-npm run dev     # http://localhost:5173，/api 代理到 http://localhost:8080
-npm run build   # 产物输出到 dist/
+npm run dev     # http://localhost:5173（/api を http://localhost:8080 へプロキシ）
+npm run build   # dist/ へ出力
 ```
 
-接口依赖后端，请先按[根目录 README](../README.md) 启动后端服务。
+API はバックエンドに依存します。先に[リポジトリ直下の README](../README.md) を参照してバックエンドを起動してください。

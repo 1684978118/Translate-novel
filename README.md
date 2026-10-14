@@ -1,51 +1,54 @@
-# Translate Novel（日文小说阅读与学习平台）
+# Translate Novel — 日本語小説読解支援プラットフォーム
 
-把「读日文小说」和「学日语」合并到同一个流程里的全栈项目：上传 TXT / EPUB 小说后，可以在阅读页按段落做翻译、注音、语法分析和单词查询，并保存阅读进度、书签与生词。
+「日本語の小説を読む」と「日本語を学ぶ」をひとつの流れにまとめたフルスタックの Web アプリケーションです。
+TXT / EPUB の小説をアップロードすると、章立ての自動解析と形態素解析を行い、読書画面では段落ごとの翻訳・ふりがな（ルビ）・文法解説・単語検索ができます。読書の進捗・ブックマーク・単語帳も自動的に保存されます。
 
-## 功能
+## 主な機能
 
-- 用户注册 / 登录 / 刷新登录态（Access Token + Refresh Token）
-- TXT / EPUB 小说上传与解析（分词与章节切分在后端完成）
-- 书架：图书列表、图书详情、章节列表
-- 阅读页：按段落加载、按滚动位置自动保存进度、上一章 / 下一章
-- 段落翻译（OpenAI 或 Google 网页翻译；未配置密钥时自动降级为占位翻译）
-- 段落注音（Ruby）、启发式语法分析、单词查询
-- 书签与生词本
+- ユーザー登録 / ログイン / トークンのリフレッシュ（Access Token + Refresh Token）
+- TXT / EPUB のアップロードと解析（章の切り出し・文の分割はバックエンドで実施）
+- 本棚：書籍の一覧・詳細・章一覧
+- リーダー：段落単位の表示、スクロール位置からの進捗自動保存、前後章への移動
+- 段落翻訳：LLM（OpenAI 互換 chat/completions API。Zhipu GLM での動作を確認済み）。キー未設定時は簡易翻訳へ自動フォールバック
+- ふりがな（ルビ）表示：kuromoji による形態素解析に基づき生成
+- 文法パターンの解説、ワンタップでの単語検索（LLM による辞書風の語義解説、フォールバック付き）
+- ブックマークと単語帳（例文の登録も可能）
 
-## 技术栈
+## 技術スタック
 
-| 层 | 技术 |
+| レイヤー | 技術 |
 | --- | --- |
-| 后端 | Spring Boot 2.7、MyBatis-Plus、Spring Security + JWT、Flyway、MySQL 8 |
-| 前端 | Vue 3 + Vite + Pinia + Vue Router + Element Plus + axios |
-| 日语分词 | 后端 kuromoji-ipadic |
+| バックエンド | Java 8 / Spring Boot 2.7 / Spring Security + JWT / MyBatis-Plus / Flyway / MySQL 8 |
+| フロントエンド | Vue 3（`<script setup>`）/ Vite / Pinia / Vue Router / Element Plus / axios |
+| 日本語 NLP | kuromoji-ipadic（形態素解析・ルビ生成） |
+| LLM | OpenAI 互換 API（Zhipu GLM／段落翻訳・語義の生成） |
 
-## 目录结构
+## ディレクトリ構成
 
-- `backend/`：Spring Boot 服务
-- `frontend/`：Vue 3 应用
-- `SPEC.md`：最初的设计文档；实际实现以代码为准
+- `backend/`：Spring Boot サービス
+- `frontend/`：Vue 3 アプリケーション
+- `SPEC.md/`：初期の設計ドキュメント（実装はコードが正）
 
-## 环境要求
+## 環境要件
 
-- JDK：源码级别为 Java 8；已适配较高版本 JDK（实测 JDK 25 可编译运行）
-  - Spring Boot 2.7 默认带入的 Lombok 版本不支持较新的 JDK，本项目已在 `backend/pom.xml` 中把 Lombok 固定到 `1.18.44`，因此可直接用新版 JDK 构建
-- Maven：仓库自带 `mvnw` 包装器，无需单独安装（首次运行会自动下载 Maven）
-- Node.js 18+（前端构建）
-- MySQL 8（后端默认连接本地 MySQL）
+- JDK：ソースレベルは Java 8。新しい JDK でもビルド可能（JDK 25 で動作確認済み）
+  - Spring Boot 2.7 が依存解決する Lombok は新しめの JDK に非対応のため、`backend/pom.xml` で Lombok を `1.18.44` に固定しています
+- Maven：`mvnw` ラッパー同梱のため個別インストール不要（初回実行時に Maven を自動ダウンロード）
+- Node.js 18 以上（フロントエンドのビルド）
+- MySQL 8（バックエンドはデフォルトでローカルの MySQL に接続）
 
-## 本地启动
+## ローカル起動
 
-### 后端
+### バックエンド
 
 ```powershell
 cd backend
 ./mvnw.cmd spring-boot:run
 ```
 
-默认连接本地 MySQL，业务数据落在 `translate_novel` 数据库，启动时自动建库建表（表结构由 Flyway 管理，迁移脚本位于 `backend/src/main/resources/db/migration`）。
+デフォルトでローカルの MySQL に接続し、`translate_novel` データベースへ業務データを保存します。起動時に DB・テーブルを自動作成します（スキーマは Flyway で管理。マイグレーションは `backend/src/main/resources/db/migration`）。
 
-默认开发配置：
+デフォルトの開発用設定：
 
 ```text
 host: 127.0.0.1
@@ -55,7 +58,7 @@ username: root
 password: 123456
 ```
 
-可用环境变量覆盖：
+環境変数で上書き可能：
 
 ```powershell
 $env:MYSQL_HOST="127.0.0.1"
@@ -65,21 +68,24 @@ $env:MYSQL_USERNAME="root"
 $env:MYSQL_PASSWORD="123456"
 ```
 
-如需启用真实翻译服务，先设置环境变量：
+LLM 翻訳・語義生成を有効にする場合は API キーを設定：
 
 ```powershell
 $env:OPENAI_API_KEY="your_api_key"
+# OpenAI 互換のエンドポイントとモデル名も切り替え可能
+$env:OPENAI_BASE_URL="https://open.bigmodel.cn/api/paas/v4"
+$env:OPENAI_MODEL="glm-5.3-flash"
 ```
 
-未配置密钥时会自动回退到 Google 网页翻译或占位翻译，不影响其余流程。
+キー未設定の場合は簡易翻訳へ自動フォールバックし、他の機能には影響しません。
 
-生产部署请务必覆盖 JWT 签名密钥（默认值仅用于本地开发）：
+本番環境では JWT 署名鍵を必ず上書きしてください（デフォルト値はローカル開発専用）：
 
 ```powershell
-$env:JWT_SECRET="至少32字节的随机字符串"
+$env:JWT_SECRET="32バイト以上のランダム文字列"
 ```
 
-### 前端
+### フロントエンド
 
 ```powershell
 cd frontend
@@ -87,26 +93,26 @@ npm install
 npm run dev
 ```
 
-开发环境下 Vite 会把 `/api` 代理到 `http://localhost:8080`。
+開発時は Vite が `/api` を `http://localhost:8080` へプロキシします。
 
-## 校验命令
+## 検証コマンド
 
-后端测试（使用 H2 内存库，无需本地 MySQL）：
+バックエンドのテスト（H2 インメモリ DB を使用。ローカル MySQL 不要）：
 
 ```powershell
 cd backend
 ./mvnw.cmd test
 ```
 
-前端构建：
+フロントエンドのビルド：
 
 ```powershell
 cd frontend
 npm run build
 ```
 
-## 一些取舍
+## 設計上の判断
 
-- 自动化测试固定使用 H2 内存库，避免依赖本机 MySQL 状态。
-- 数据库结构由 Flyway 版本化管理，后续新增字段/索引建议继续追加 `V2/V3/...` 迁移脚本。
-- 当前 refresh token 为无状态 JWT，适合本地单体开发；若后续要做多端登录管理、强制下线或会话撤销，建议补服务端持久化与轮换策略。
+- 自動テストは H2 インメモリ DB に固定し、ローカルの MySQL 状態に依存しないようにしています。
+- スキーマは Flyway でバージョン管理しており、項目追加時は `V2` / `V3`... のマイグレーションを追記する方針です。
+- refresh token はステートレスな JWT を採用（ローカルのモノリス開発向け）。マルチデバイスのログイン管理・強制ログアウト・セッション失効を実装する場合は、サーバー側の永続化とローテーション戦略の追加を推奨します。
