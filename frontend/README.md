@@ -2,6 +2,8 @@
 
 日本語小説読解支援プラットフォームのフロントエンド。[backend](../backend) の REST API と連携します。
 
+本アプリは、AI コーディングツールを活用して開発した個人開発プロジェクトです。
+
 ## 主な機能
 
 - 本棚：TXT / EPUB のアップロード（章立て・段落の自動解析）、書籍の削除
@@ -12,7 +14,7 @@
 
 - Vue 3（`<script setup>`）+ Vue Router 4 + Pinia
 - Element Plus
-- axios：リクエストインターセプタで JWT を自動付与し、トークンの失効が近い場合や 401 応答時は refresh token でサイレントに再取得
+- axios：インターセプタで API 呼び出しに JWT を自動付与。トークンが切れた場合は refresh token で再取得します。
 
 ## 開発
 
